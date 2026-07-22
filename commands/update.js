@@ -2,6 +2,7 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const AdmZip = require('adm-zip'); // <-- Added right here at the top!
 const settings = require('../settings');
 const isOwnerOrSudo = require('../lib/isOwner');
 
@@ -82,28 +83,15 @@ function downloadFile(url, dest, visited = new Set()) {
     });
 }
 
+// Clean and direct extraction powered by pure JavaScript (adm-zip)
 async function extractZip(zipPath, outDir) {
-    if (process.platform === 'win32') {
-        const cmd = `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${outDir.replace(/\\/g, '/')}' -Force"`;
-        await run(cmd);
+    try {
+        const zip = new AdmZip(zipPath);
+        zip.extractAllTo(outDir, true);
         return;
+    } catch (e) {
+        throw new Error("Failed to extract zip file: " + e.message);
     }
-    try {
-        await run('command -v unzip');
-        await run(`unzip -o '${zipPath}' -d '${outDir}'`);
-        return;
-    } catch {}
-    try {
-        await run('command -v 7z');
-        await run(`7z x -y '${zipPath}' -o'${outDir}'`);
-        return;
-    } catch {}
-    try {
-        await run('busybox unzip -h');
-        await run(`busybox unzip -o '${zipPath}' -d '${outDir}'`);
-        return;
-    } catch {}
-    throw new Error("No system unzip tool found (unzip/7z/busybox).");
 }
 
 function copyRecursive(src, dest, ignore = [], relative = '', outList = []) {
@@ -173,7 +161,6 @@ async function restartProcess(sock, chatId, message) {
     } catch {}
     
     setTimeout(() => {
-        // Pterodactyl panels intercept exit code 1 as a crash event and trigger their auto-restart policy logic automatically.
         process.exit(1);
     }, 1000);
 }
